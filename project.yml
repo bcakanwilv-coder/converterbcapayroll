@@ -3,18 +3,12 @@ options:
   bundleIdPrefix: com.payrollbca
   deploymentTarget:
     iOS: "16.0"
-packages:
-  CoreXLSX:
-    url: https://github.com
-    from: 0.14.0
 targets:
   PayrollBCAConverter:
     type: application
     platform: iOS
     sources:
       - Sources
-    dependencies:
-      - package: CoreXLSX
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.payrollbca.converter
@@ -25,7 +19,7 @@ targets:
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO
         EXPANDED_CODE_SIGN_IDENTITY: ""
-        ENABLE_BITCODE: NO
+        OTHER_LDFLAGS: "-lz"
     info:
       path: Sources/Info.plist
       properties:
