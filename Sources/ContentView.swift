@@ -1,13 +1,12 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import zlib
+import Compression
 
 struct ContentView: View {
     @State private var selectedFileName: String = ""
     @State private var statusMessage: String = ""
     @State private var isError: Bool = false
     @State private var previewText: String = ""
-    @State private var exportedFileURL: URL?
     @State private var showFileImporter: Bool = false
     @State private var showFileExporter: Bool = false
     @State private var txtDocument: TxtFileDocument?
@@ -20,7 +19,6 @@ struct ContentView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
 
-                    // Tombol Pilih & Proses File Excel
                     Button(action: {
                         showFileImporter = true
                     }) {
@@ -44,7 +42,6 @@ struct ContentView: View {
                         .cornerRadius(12)
                     }
 
-                    // Kotak Status
                     if !statusMessage.isEmpty {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
@@ -58,7 +55,6 @@ struct ContentView: View {
                         .cornerRadius(10)
                     }
 
-                    // Tombol Simpan & Salin jika berhasil
                     if !previewText.isEmpty {
                         Button(action: {
                             txtDocument = TxtFileDocument(text: previewText)
@@ -111,7 +107,7 @@ struct ContentView: View {
             .navigationTitle("Payroll BCA")
             .fileImporter(
                 isPresented: $showFileImporter,
-                allowedContentTypes: [.item],
+                allowedContentTypes: [.data],
                 allowsMultipleSelection: false
             ) { result in
                 handleFileSelection(result: result)
@@ -143,10 +139,10 @@ struct ContentView: View {
         case .success(let urls):
             guard let url = urls.first else { return }
             selectedFileName = url.lastPathComponent
-            
+
             let hasAccess = url.startAccessingSecurityScopedResource()
             defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
-            
+
             do {
                 let fileData = try Data(contentsOf: url)
                 let converted = try NativeExcelParser.convertPayrollBCA(data: fileData)
@@ -192,7 +188,6 @@ struct TxtFileDocument: FileDocument {
     }
 }
 
-// MARK: - Parser XLSX/XLSM Mandiri Menggunakan Zlib & XMLParser Bawaan iOS
 enum PayrollError: LocalizedError {
     case invalidFile(String)
     case missingMandatory
@@ -208,13 +203,12 @@ enum PayrollError: LocalizedError {
 class NativeExcelParser {
     static func convertPayrollBCA(data: Data) throws -> String {
         let entries = try unzipEntries(data: data)
-        
+
         var sharedStrings: [String] = []
         if let ssData = entries["xl/sharedStrings.xml"] {
             sharedStrings = SharedStringsXMLParser.parse(data: ssData)
         }
 
-        // Cari sheet Payroll_BCA atau sheet pertama
         var targetSheetPath = "xl/worksheets/sheet1.xml"
         if let wbData = entries["xl/workbook.xml"], let relsData = entries["xl/_rels/workbook.xml.rels"] {
             if let foundPath = WorkbookResolver.findSheetPath(wbData: wbData, relsData: relsData, targetName: "Payroll_BCA") {
@@ -233,7 +227,6 @@ class NativeExcelParser {
             return (cells[ref] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // 1. Validasi Mandatory
         let corpID = val("C3")
         let srcAcct = val("C4")
         let feeAccount = val("C5")
@@ -242,3 +235,15 @@ class NativeExcelParser {
         let effYear = val("C10")
 
         if corpID.isEmpty || srcAcct.isEmpty || feeAccount.isEmpty || effDate.isEmpty || effMonth.isEmpty || effYear.isEmpty {
+            throw PayrollError.missingMandatory
+        }
+
+        var header = "0|PY|SD|B|"
+        header += "\(corpID)|"
+        header += "\(val("K3"))|"
+        header += "\(val("K4"))|"
+        header += "\(effYear)\(effMonth)\(effDate)|"
+        header += "\(val("K5"))|"
+        header += "\(srcAcct)|"
+        header += "OUR|"
+        header += "\(feeAccount)|"
